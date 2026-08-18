@@ -1,3 +1,27 @@
+div.cvacw-video-app header.cw-videos-frontend__header {
+	max-width: 680px;
+	margin: 0 auto 32px;
+	text-align: center;
+}
+
+div.cvacw-video-app h2.cw-videos-frontend__heading {
+	margin: 0 0 24px;
+	color: #07182f;
+	font-size: 40px;
+	font-weight: 900;
+	letter-spacing: 0;
+	line-height: 1.1;
+}
+
+div.cvacw-video-app p.cw-videos-frontend__intro {
+	margin: 0 auto;
+	color: #26364a;
+	font-size: 16px;
+	font-weight: 400;
+	letter-spacing: 0;
+	line-height: 1.55;
+}
+
 div.cvacw-video-app div.cvacw-video-grid {
 	display: grid;
 	grid-template-columns: repeat(var(--cvacw-columns, 3), minmax(0, 1fr));
@@ -148,44 +172,36 @@ div.cvacw-video-app div.cvacw-load-more-wrap {
 	margin: 32px 0 0;
 }
 
-div.cvacw-video-app button.cvacw-load-more {
+div.cvacw-video-app.cw-videos-frontend button.cw-videos-load-more {
 	appearance: none;
-	background: #0f172a;
-	border: 1px solid #0f172a;
-	border-radius: 4px;
+	background: #fff;
+	border: 1px solid #9fb0c7;
+	border-radius: 3px;
 	box-shadow: none;
-	color: #ffffff;
+	color: #03136e;
 	cursor: pointer;
-	display: inline-flex;
-	font-size: 1rem;
-	font-style: normal;
+	filter: none;
+	font-size: 13px;
 	font-weight: 700;
-	justify-content: center;
-	letter-spacing: 0;
-	line-height: 1.2;
-	margin: 0;
-	min-width: 144px;
-	padding: 13px 22px;
-	text-align: center;
-	text-decoration: none;
-	text-transform: none;
-	transition: background 160ms ease, border-color 160ms ease, opacity 160ms ease;
+	min-width: 138px;
+	padding: 8px 22px;
+	text-shadow: none;
 }
 
-div.cvacw-video-app button.cvacw-load-more:hover,
-div.cvacw-video-app button.cvacw-load-more:focus-visible {
-	background: #2563eb;
-	border-color: #2563eb;
-	color: #ffffff;
+div.cvacw-video-app.cw-videos-frontend button.cw-videos-load-more:hover,
+div.cvacw-video-app.cw-videos-frontend button.cw-videos-load-more:focus-visible {
+	background: #fff;
+	border-color: #03136e;
+	color: #03136e;
 }
 
-div.cvacw-video-app button.cvacw-load-more:focus-visible {
+div.cvacw-video-app.cw-videos-frontend button.cw-videos-load-more:focus-visible {
 	outline: 3px solid #93c5fd;
 	outline-offset: 3px;
 }
 
-div.cvacw-video-app button.cvacw-load-more:disabled,
-div.cvacw-video-app button.cvacw-load-more.cvacw-load-more-is-loading {
+div.cvacw-video-app.cw-videos-frontend button.cw-videos-load-more:disabled,
+div.cvacw-video-app.cw-videos-frontend button.cw-videos-load-more.cw-videos-load-more-is-loading {
 	cursor: wait;
 	opacity: 0.72;
 }

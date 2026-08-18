@@ -30,6 +30,7 @@ final class Custom_Videos_App_CW {
 	private function __construct() {
 		add_action('admin_menu', array($this, 'add_settings_page'));
 		add_action('admin_init', array($this, 'register_settings'));
+		add_action('admin_post_cvacw_clear_video_cache', array($this, 'handle_clear_video_cache'));
 		add_action('wp_enqueue_scripts', array($this, 'register_assets'));
 		add_action('wp_ajax_cvacw_load_more_videos', array($this, 'ajax_load_more_videos'));
 		add_action('wp_ajax_nopriv_cvacw_load_more_videos', array($this, 'ajax_load_more_videos'));
@@ -166,6 +167,11 @@ final class Custom_Videos_App_CW {
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html__('Custom Video App CW', 'custom-videos-app-cw'); ?></h1>
+			<?php if (!empty($_GET['cvacw_cache_cleared'])) : ?>
+				<div class="notice notice-success is-dismissible">
+					<p><?php echo esc_html__('Vimeo video cache cleared.', 'custom-videos-app-cw'); ?></p>
+				</div>
+			<?php endif; ?>
 			<form action="options.php" method="post">
 				<?php
 				settings_fields('custom_videos_app_cw');
@@ -178,8 +184,36 @@ final class Custom_Videos_App_CW {
 			<p><code>[custom_video_app_cw]</code></p>
 			<p><?php echo esc_html__('Optional attributes: per_page, columns, show_description. The per_page value controls the initial and load-more batch size.', 'custom-videos-app-cw'); ?></p>
 			<p><code>[custom_video_app_cw per_page="12" columns="3" show_description="false"]</code></p>
+			<hr />
+			<h2><?php echo esc_html__('Cache Tools', 'custom-videos-app-cw'); ?></h2>
+			<p><?php echo esc_html__('Clear the cached Vimeo API responses immediately without changing the saved cache duration.', 'custom-videos-app-cw'); ?></p>
+			<form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post">
+				<input type="hidden" name="action" value="cvacw_clear_video_cache" />
+				<?php wp_nonce_field('cvacw_clear_video_cache'); ?>
+				<?php submit_button(__('Clear video cache now', 'custom-videos-app-cw'), 'secondary', 'submit', false); ?>
+			</form>
 		</div>
 		<?php
+	}
+
+	public function handle_clear_video_cache(): void {
+		if (!current_user_can('manage_options')) {
+			wp_die(esc_html__('You do not have permission to clear the video cache.', 'custom-videos-app-cw'));
+		}
+
+		check_admin_referer('cvacw_clear_video_cache');
+		$this->clear_video_cache();
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'                => 'custom-videos-app-cw',
+					'cvacw_cache_cleared' => '1',
+				),
+				admin_url('options-general.php')
+			)
+		);
+		exit;
 	}
 
 	public function register_assets(): void {
@@ -223,39 +257,52 @@ final class Custom_Videos_App_CW {
 
 		if (is_wp_error($video_batch)) {
 			if (current_user_can('manage_options')) {
-				return '<div class="cvacw-video-app"><div class="cvacw-notice">' . esc_html($video_batch->get_error_message()) . '</div></div>';
+				return '<div class="cvacw-video-app">' . $this->render_frontend_header() . '<div class="cvacw-notice">' . esc_html($video_batch->get_error_message()) . '</div></div>';
 			}
 
-			return '<div class="cvacw-video-app"><div class="cvacw-notice">' . esc_html__('Videos are temporarily unavailable.', 'custom-videos-app-cw') . '</div></div>';
+			return '<div class="cvacw-video-app">' . $this->render_frontend_header() . '<div class="cvacw-notice">' . esc_html__('Videos are temporarily unavailable.', 'custom-videos-app-cw') . '</div></div>';
 		}
 
 		$videos = $video_batch['videos'];
 
 		if (empty($videos)) {
-			return '<div class="cvacw-video-app"><div class="cvacw-notice">' . esc_html__('No public Vimeo videos are available right now.', 'custom-videos-app-cw') . '</div></div>';
+			return '<div class="cvacw-video-app">' . $this->render_frontend_header() . '<div class="cvacw-notice">' . esc_html__('No public Vimeo videos are available right now.', 'custom-videos-app-cw') . '</div></div>';
 		}
 
 		ob_start();
 		?>
 		<div
-			class="cvacw-video-app"
+			class="cvacw-video-app cw-videos-frontend"
 			data-ajax-url="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"
 			data-nonce="<?php echo esc_attr(wp_create_nonce('cvacw_load_more_videos')); ?>"
 			data-per-page="<?php echo esc_attr((string) $per_page); ?>"
 			data-next-page="<?php echo esc_attr((string) $video_batch['next_page']); ?>"
 			data-show-description="<?php echo esc_attr($show_description ? '1' : '0'); ?>"
 		>
+			<?php echo $this->render_frontend_header(); ?>
 			<div class="cvacw-video-grid" style="<?php echo esc_attr('--cvacw-columns:' . $columns . ';--cvacw-tablet-columns:' . $tablet_columns); ?>">
 				<?php echo $this->render_video_cards($videos, $show_description); ?>
 			</div>
 			<?php if ($video_batch['has_more']) : ?>
 				<div class="cvacw-load-more-wrap">
-					<button type="button" class="cvacw-load-more">
-						<?php echo esc_html__('Load more', 'custom-videos-app-cw'); ?>
+					<button class="cw-videos-load-more" type="button" data-cw-videos-load-more>
+						<span><?php echo esc_html__('Load more', 'custom-videos-app-cw'); ?></span>
 					</button>
 				</div>
 			<?php endif; ?>
 		</div>
+		<?php
+
+		return (string) ob_get_clean();
+	}
+
+	private function render_frontend_header(): string {
+		ob_start();
+		?>
+		<header class="cw-videos-frontend__header">
+			<h2 class="cw-videos-frontend__heading"><?php echo esc_html__('Videos', 'custom-videos-app-cw'); ?></h2>
+			<p class="cw-videos-frontend__intro"><?php echo esc_html__('See Soroka Medical Center saving lives under fire. Discover stories of frontline care, medical innovation, resilience, and leadership in action, and explore our special events that unite communities in support of Soroka\'s mission.', 'custom-videos-app-cw'); ?></p>
+		</header>
 		<?php
 
 		return (string) ob_get_clean();

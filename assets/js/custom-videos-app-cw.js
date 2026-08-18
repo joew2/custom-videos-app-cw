@@ -5,6 +5,17 @@
 	var frame;
 	var lastTrigger;
 
+	function setLoadMoreText(button, text) {
+		var label = button.querySelector('span');
+
+		if (label) {
+			label.textContent = text;
+			return;
+		}
+
+		button.textContent = text;
+	}
+
 	function loadMoreVideos(app, button) {
 		var grid = app.querySelector('div.cvacw-video-grid');
 		var formData = new FormData();
@@ -14,8 +25,8 @@
 		}
 
 		button.disabled = true;
-		button.classList.add('cvacw-load-more-is-loading');
-		button.textContent = 'Loading...';
+		button.classList.add('cw-videos-load-more-is-loading');
+		setLoadMoreText(button, 'Loading...');
 
 		formData.append('action', 'cvacw_load_more_videos');
 		formData.append('nonce', app.getAttribute('data-nonce') || '');
@@ -56,13 +67,13 @@
 				}
 
 				button.disabled = false;
-				button.classList.remove('cvacw-load-more-is-loading');
-				button.textContent = 'Load more';
+				button.classList.remove('cw-videos-load-more-is-loading');
+				setLoadMoreText(button, 'Load more');
 			})
 			.catch(function () {
 				button.disabled = false;
-				button.classList.remove('cvacw-load-more-is-loading');
-				button.textContent = 'Try again';
+				button.classList.remove('cw-videos-load-more-is-loading');
+				setLoadMoreText(button, 'Try again');
 			});
 	}
 
@@ -143,7 +154,7 @@
 
 	document.addEventListener('click', function (event) {
 		var trigger = event.target.closest('button.cvacw-video-trigger');
-		var loadMoreButton = event.target.closest('button.cvacw-load-more');
+		var loadMoreButton = event.target.closest('button.cw-videos-load-more[data-cw-videos-load-more]');
 		var app;
 
 		if (trigger) {
