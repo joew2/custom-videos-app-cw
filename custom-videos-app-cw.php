@@ -18,7 +18,6 @@ final class Custom_Videos_App_CW {
 	private const DEFAULT_PER_PAGE = 500;
 
 	private static $instance = null;
-	private $assets_enqueued = false;
 
 	public static function instance(): Custom_Videos_App_CW {
 		if (null === self::$instance) {
@@ -158,8 +157,23 @@ final class Custom_Videos_App_CW {
 	}
 
 	public function register_assets(): void {
-		wp_register_style('custom-videos-app-cw', false, array(), '1.0.0');
-		wp_register_script('custom-videos-app-cw', false, array(), '1.0.0', true);
+		$css_path = plugin_dir_path(__FILE__) . 'assets/css/custom-videos-app-cw.css';
+		$js_path  = plugin_dir_path(__FILE__) . 'assets/js/custom-videos-app-cw.js';
+
+		wp_register_style(
+			'custom-videos-app-cw',
+			plugins_url('assets/css/custom-videos-app-cw.css', __FILE__),
+			array(),
+			file_exists($css_path) ? (string) filemtime($css_path) : '1.0.0'
+		);
+
+		wp_register_script(
+			'custom-videos-app-cw',
+			plugins_url('assets/js/custom-videos-app-cw.js', __FILE__),
+			array(),
+			file_exists($js_path) ? (string) filemtime($js_path) : '1.0.0',
+			true
+		);
 	}
 
 	public function render_shortcode(array $atts = array()): string {
@@ -183,42 +197,54 @@ final class Custom_Videos_App_CW {
 
 		if (is_wp_error($videos)) {
 			if (current_user_can('manage_options')) {
-				return '<div class="cvacw-notice">' . esc_html($videos->get_error_message()) . '</div>';
+				return '<div class="cvacw-video-app"><div class="cvacw-notice">' . esc_html($videos->get_error_message()) . '</div></div>';
 			}
 
-			return '<div class="cvacw-notice">' . esc_html__('Videos are temporarily unavailable.', 'custom-videos-app-cw') . '</div>';
+			return '<div class="cvacw-video-app"><div class="cvacw-notice">' . esc_html__('Videos are temporarily unavailable.', 'custom-videos-app-cw') . '</div></div>';
 		}
 
 		if (empty($videos)) {
-			return '<div class="cvacw-notice">' . esc_html__('No public Vimeo videos are available right now.', 'custom-videos-app-cw') . '</div>';
+			return '<div class="cvacw-video-app"><div class="cvacw-notice">' . esc_html__('No public Vimeo videos are available right now.', 'custom-videos-app-cw') . '</div></div>';
 		}
 
 		ob_start();
 		?>
-		<div class="cvacw-video-grid" style="<?php echo esc_attr('--cvacw-columns:' . $columns . ';--cvacw-tablet-columns:' . $tablet_columns); ?>">
-			<?php foreach ($videos as $video) : ?>
-				<article class="cvacw-video-card">
-					<button
-						type="button"
-						class="cvacw-video-trigger"
-						data-vimeo-url="<?php echo esc_url($video['embed_url']); ?>"
-						aria-label="<?php echo esc_attr(sprintf(__('Play %s', 'custom-videos-app-cw'), $video['title'])); ?>"
-					>
-						<span class="cvacw-thumb-wrap">
-							<?php if (!empty($video['thumbnail'])) : ?>
-								<img src="<?php echo esc_url($video['thumbnail']); ?>" alt="" loading="lazy" />
-							<?php else : ?>
-								<span class="cvacw-thumb-placeholder" aria-hidden="true"></span>
-							<?php endif; ?>
-							<span class="cvacw-play" aria-hidden="true"></span>
-						</span>
-						<span class="cvacw-title"><?php echo esc_html($video['title']); ?></span>
-					</button>
-					<?php if ($show_description && !empty($video['description'])) : ?>
-						<p class="cvacw-description"><?php echo esc_html($video['description']); ?></p>
-					<?php endif; ?>
-				</article>
-			<?php endforeach; ?>
+		<div class="cvacw-video-app">
+			<div class="cvacw-video-grid" style="<?php echo esc_attr('--cvacw-columns:' . $columns . ';--cvacw-tablet-columns:' . $tablet_columns); ?>">
+				<?php foreach ($videos as $video) : ?>
+					<article class="cvacw-video-card">
+						<button
+							type="button"
+							class="cvacw-video-trigger cvacw-video-trigger-thumb"
+							data-vimeo-url="<?php echo esc_url($video['embed_url']); ?>"
+							data-vimeo-title="<?php echo esc_attr($video['title']); ?>"
+							aria-label="<?php echo esc_attr(sprintf(__('Play %s', 'custom-videos-app-cw'), $video['title'])); ?>"
+						>
+							<span class="cvacw-thumb-wrap">
+								<?php if (!empty($video['thumbnail'])) : ?>
+									<img class="cvacw-thumbnail" src="<?php echo esc_url($video['thumbnail']); ?>" alt="" loading="lazy" />
+								<?php else : ?>
+									<span class="cvacw-thumb-placeholder" aria-hidden="true"></span>
+								<?php endif; ?>
+								<span class="cvacw-play" aria-hidden="true"></span>
+							</span>
+						</button>
+						<h4 class="cvacw-title">
+							<button
+								type="button"
+								class="cvacw-video-trigger cvacw-video-trigger-title"
+								data-vimeo-url="<?php echo esc_url($video['embed_url']); ?>"
+								data-vimeo-title="<?php echo esc_attr($video['title']); ?>"
+							>
+								<?php echo esc_html($video['title']); ?>
+							</button>
+						</h4>
+						<?php if ($show_description && !empty($video['description'])) : ?>
+							<p class="cvacw-description"><?php echo esc_html($video['description']); ?></p>
+						<?php endif; ?>
+					</article>
+				<?php endforeach; ?>
+			</div>
 		</div>
 		<?php
 
@@ -369,306 +395,8 @@ final class Custom_Videos_App_CW {
 	}
 
 	private function enqueue_assets(): void {
-		if ($this->assets_enqueued) {
-			return;
-		}
-
 		wp_enqueue_style('custom-videos-app-cw');
-		wp_add_inline_style('custom-videos-app-cw', $this->get_css());
-
 		wp_enqueue_script('custom-videos-app-cw');
-		wp_add_inline_script('custom-videos-app-cw', $this->get_js());
-
-		$this->assets_enqueued = true;
-	}
-
-	private function get_css(): string {
-		return <<<'CSS'
-.cvacw-video-grid {
-	display: grid;
-	grid-template-columns: repeat(var(--cvacw-columns, 3), minmax(0, 1fr));
-	gap: 24px;
-	margin: 32px 0;
-}
-
-.cvacw-video-card {
-	min-width: 0;
-}
-
-.cvacw-video-trigger {
-	appearance: none;
-	background: transparent;
-	border: 0;
-	color: inherit;
-	cursor: pointer;
-	display: block;
-	font: inherit;
-	padding: 0;
-	text-align: left;
-	width: 100%;
-}
-
-.cvacw-thumb-wrap {
-	aspect-ratio: 16 / 9;
-	background: #111827;
-	display: block;
-	overflow: hidden;
-	position: relative;
-	width: 100%;
-}
-
-.cvacw-thumb-wrap img {
-	display: block;
-	height: 100%;
-	object-fit: cover;
-	transition: transform 180ms ease, filter 180ms ease;
-	width: 100%;
-}
-
-.cvacw-thumb-placeholder {
-	background: #1f2937;
-	display: block;
-	height: 100%;
-	width: 100%;
-}
-
-.cvacw-play {
-	background: rgba(255, 255, 255, 0.92);
-	border-radius: 999px;
-	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-	height: 58px;
-	left: 50%;
-	position: absolute;
-	top: 50%;
-	transform: translate(-50%, -50%);
-	transition: transform 180ms ease, background 180ms ease;
-	width: 58px;
-}
-
-.cvacw-play::before {
-	border-bottom: 12px solid transparent;
-	border-left: 18px solid #0f172a;
-	border-top: 12px solid transparent;
-	content: "";
-	left: 23px;
-	position: absolute;
-	top: 17px;
-}
-
-.cvacw-title {
-	display: block;
-	font-size: 1.0625rem;
-	font-weight: 700;
-	line-height: 1.3;
-	margin-top: 12px;
-	overflow-wrap: anywhere;
-}
-
-.cvacw-description {
-	color: #52606d;
-	font-size: 0.95rem;
-	line-height: 1.55;
-	margin: 8px 0 0;
-}
-
-.cvacw-video-trigger:hover .cvacw-thumb-wrap img,
-.cvacw-video-trigger:focus-visible .cvacw-thumb-wrap img {
-	filter: brightness(0.88);
-	transform: scale(1.035);
-}
-
-.cvacw-video-trigger:hover .cvacw-play,
-.cvacw-video-trigger:focus-visible .cvacw-play {
-	background: #ffffff;
-	transform: translate(-50%, -50%) scale(1.05);
-}
-
-.cvacw-video-trigger:focus-visible {
-	outline: 3px solid #2563eb;
-	outline-offset: 5px;
-}
-
-.cvacw-notice {
-	background: #f8fafc;
-	border-left: 4px solid #2563eb;
-	color: #334155;
-	margin: 24px 0;
-	padding: 14px 16px;
-}
-
-.cvacw-modal {
-	align-items: center;
-	background: rgba(15, 23, 42, 0.84);
-	display: none;
-	inset: 0;
-	justify-content: center;
-	padding: 24px;
-	position: fixed;
-	z-index: 99999;
-}
-
-.cvacw-modal.is-open {
-	display: flex;
-}
-
-.cvacw-modal__dialog {
-	max-width: min(1040px, 100%);
-	position: relative;
-	width: 100%;
-}
-
-.cvacw-modal__frame {
-	aspect-ratio: 16 / 9;
-	background: #000000;
-	box-shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
-	width: 100%;
-}
-
-.cvacw-modal__frame iframe {
-	border: 0;
-	display: block;
-	height: 100%;
-	width: 100%;
-}
-
-.cvacw-modal__close {
-	align-items: center;
-	appearance: none;
-	background: #ffffff;
-	border: 0;
-	border-radius: 999px;
-	color: #0f172a;
-	cursor: pointer;
-	display: flex;
-	font-size: 28px;
-	height: 44px;
-	justify-content: center;
-	line-height: 1;
-	position: absolute;
-	right: -12px;
-	top: -52px;
-	width: 44px;
-}
-
-.cvacw-modal__close:focus-visible {
-	outline: 3px solid #93c5fd;
-	outline-offset: 3px;
-}
-
-body.cvacw-modal-open {
-	overflow: hidden;
-}
-
-@media (max-width: 900px) {
-	.cvacw-video-grid {
-		grid-template-columns: repeat(var(--cvacw-tablet-columns, 2), minmax(0, 1fr));
-	}
-}
-
-@media (max-width: 640px) {
-	.cvacw-video-grid {
-		grid-template-columns: 1fr;
-		gap: 22px;
-	}
-
-	.cvacw-modal {
-		padding: 16px;
-	}
-
-	.cvacw-modal__close {
-		right: 0;
-		top: -54px;
-	}
-}
-CSS;
-	}
-
-	private function get_js(): string {
-		return <<<'JS'
-(function () {
-	var modal;
-	var frame;
-	var lastTrigger;
-
-	function getModal() {
-		if (modal) {
-			return modal;
-		}
-
-		modal = document.createElement('div');
-		modal.className = 'cvacw-modal';
-		modal.setAttribute('role', 'dialog');
-		modal.setAttribute('aria-modal', 'true');
-		modal.setAttribute('aria-label', 'Video player');
-		modal.innerHTML = '<div class="cvacw-modal__dialog"><button type="button" class="cvacw-modal__close" aria-label="Close video">&times;</button><div class="cvacw-modal__frame"></div></div>';
-		document.body.appendChild(modal);
-
-		frame = modal.querySelector('.cvacw-modal__frame');
-		modal.querySelector('.cvacw-modal__close').addEventListener('click', closeModal);
-		modal.addEventListener('click', function (event) {
-			if (event.target === modal) {
-				closeModal();
-			}
-		});
-
-		return modal;
-	}
-
-	function openModal(trigger) {
-		var url = trigger.getAttribute('data-vimeo-url');
-		var embedUrl;
-
-		if (!url) {
-			return;
-		}
-
-		try {
-			embedUrl = new URL(url, window.location.href);
-			embedUrl.searchParams.set('autoplay', '1');
-			embedUrl.searchParams.set('title', '0');
-			embedUrl.searchParams.set('byline', '0');
-			embedUrl.searchParams.set('portrait', '0');
-		} catch (error) {
-			return;
-		}
-
-		lastTrigger = trigger;
-		getModal();
-		frame.innerHTML = '<iframe src="' + embedUrl.toString() + '" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="Vimeo video"></iframe>';
-		modal.classList.add('is-open');
-		document.body.classList.add('cvacw-modal-open');
-		modal.querySelector('.cvacw-modal__close').focus();
-	}
-
-	function closeModal() {
-		if (!modal) {
-			return;
-		}
-
-		modal.classList.remove('is-open');
-		document.body.classList.remove('cvacw-modal-open');
-		frame.innerHTML = '';
-
-		if (lastTrigger) {
-			lastTrigger.focus();
-		}
-	}
-
-	document.addEventListener('click', function (event) {
-		var trigger = event.target.closest('.cvacw-video-trigger');
-
-		if (trigger) {
-			openModal(trigger);
-		}
-	});
-
-	document.addEventListener('keydown', function (event) {
-		if (event.key === 'Escape' && modal && modal.classList.contains('is-open')) {
-			closeModal();
-		}
-	});
-})();
-JS;
 	}
 }
 
