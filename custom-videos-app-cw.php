@@ -80,12 +80,21 @@ final class Custom_Videos_App_CW {
 			'custom-videos-app-cw',
 			'custom_videos_app_cw_vimeo'
 		);
+
+		add_settings_field(
+			'hide_non_public',
+			__('Video visibility', 'custom-videos-app-cw'),
+			array($this, 'render_hide_non_public_field'),
+			'custom-videos-app-cw',
+			'custom_videos_app_cw_vimeo'
+		);
 	}
 
 	public function sanitize_settings(array $input): array {
-		$old_settings  = $this->get_settings();
-		$access_token  = isset($input['access_token']) ? sanitize_text_field(wp_unslash($input['access_token'])) : '';
-		$cache_minutes = isset($input['cache_minutes']) ? absint($input['cache_minutes']) : 60;
+		$old_settings    = $this->get_settings();
+		$access_token    = isset($input['access_token']) ? sanitize_text_field(wp_unslash($input['access_token'])) : '';
+		$cache_minutes   = isset($input['cache_minutes']) ? absint($input['cache_minutes']) : 60;
+		$hide_non_public = !empty($input['hide_non_public']) ? 1 : 0;
 
 		if ($access_token === '********' && !empty($old_settings['access_token'])) {
 			$access_token = $old_settings['access_token'];
@@ -102,8 +111,9 @@ final class Custom_Videos_App_CW {
 		$this->clear_video_cache();
 
 		return array(
-			'access_token'  => $access_token,
-			'cache_minutes' => $cache_minutes,
+			'access_token'    => $access_token,
+			'cache_minutes'   => $cache_minutes,
+			'hide_non_public' => $hide_non_public,
 		);
 	}
 
@@ -131,6 +141,16 @@ final class Custom_Videos_App_CW {
 			esc_html__('minutes', 'custom-videos-app-cw')
 		);
 		echo '<p class="description">' . esc_html__('Video API responses are cached to keep pages fast and avoid unnecessary Vimeo API requests.', 'custom-videos-app-cw') . '</p>';
+	}
+
+	public function render_hide_non_public_field(): void {
+		printf(
+			'<label><input type="checkbox" name="%1$s[hide_non_public]" value="1" %2$s /> %3$s</label>',
+			esc_attr(self::OPTION_NAME),
+			checked($this->should_hide_non_public_videos(), true, false),
+			esc_html__('Hide unlisted and private videos', 'custom-videos-app-cw')
+		);
+		echo '<p class="description">' . esc_html__('When checked, only publicly listed Vimeo videos are shown. When unchecked, the grid can include any videos returned by the authenticated Vimeo account that are embeddable.', 'custom-videos-app-cw') . '</p>';
 	}
 
 	public function render_settings_page(): void {
@@ -268,8 +288,9 @@ final class Custom_Videos_App_CW {
 			);
 		}
 
-		$cache_key = self::TRANSIENT_PREFIX . md5((string) $limit);
-		$cached    = get_transient($cache_key);
+		$hide_non_public = $this->should_hide_non_public_videos();
+		$cache_key        = self::TRANSIENT_PREFIX . md5((string) $limit . '_' . (int) $hide_non_public);
+		$cached           = get_transient($cache_key);
 
 		if (false !== $cached) {
 			return $cached;
@@ -320,7 +341,7 @@ final class Custom_Videos_App_CW {
 			}
 
 			foreach ($body['data'] as $video) {
-				if (!$this->is_public_video($video)) {
+				if ($hide_non_public && !$this->is_public_video($video)) {
 					continue;
 				}
 
@@ -346,7 +367,6 @@ final class Custom_Videos_App_CW {
 			$page++;
 		} while ($has_next_page && $page <= 25);
 
-
 		set_transient($cache_key, $videos, $this->get_cache_seconds());
 
 		return $videos;
@@ -356,6 +376,16 @@ final class Custom_Videos_App_CW {
 		$privacy = $video['privacy']['view'] ?? '';
 
 		return 'anybody' === $privacy;
+	}
+
+	private function should_hide_non_public_videos(): bool {
+		$settings = $this->get_settings();
+
+		if (!array_key_exists('hide_non_public', $settings)) {
+			return true;
+		}
+
+		return !empty($settings['hide_non_public']);
 	}
 
 	private function get_best_thumbnail(array $video): string {
