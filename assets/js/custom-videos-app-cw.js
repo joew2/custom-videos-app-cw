@@ -5,6 +5,67 @@
 	var frame;
 	var lastTrigger;
 
+	function loadMoreVideos(app, button) {
+		var grid = app.querySelector('div.cvacw-video-grid');
+		var formData = new FormData();
+
+		if (!grid || button.disabled) {
+			return;
+		}
+
+		button.disabled = true;
+		button.classList.add('cvacw-load-more-is-loading');
+		button.textContent = 'Loading...';
+
+		formData.append('action', 'cvacw_load_more_videos');
+		formData.append('nonce', app.getAttribute('data-nonce') || '');
+		formData.append('page', app.getAttribute('data-next-page') || '1');
+		formData.append('per_page', app.getAttribute('data-per-page') || '12');
+		formData.append('show_description', app.getAttribute('data-show-description') || '0');
+
+		fetch(app.getAttribute('data-ajax-url') || '', {
+			method: 'POST',
+			credentials: 'same-origin',
+			body: formData
+		})
+			.then(function (response) {
+				return response.json();
+			})
+			.then(function (response) {
+				var data;
+
+				if (!response || !response.success) {
+					throw new Error(response && response.data && response.data.message ? response.data.message : 'Unable to load videos.');
+				}
+
+				data = response.data || {};
+
+				if (data.html) {
+					grid.insertAdjacentHTML('beforeend', data.html);
+				}
+
+				app.setAttribute('data-next-page', data.nextPage ? String(data.nextPage) : '0');
+
+				if (!data.hasMore) {
+					if (button.parentNode && button.parentNode.classList.contains('cvacw-load-more-wrap')) {
+						button.parentNode.parentNode.removeChild(button.parentNode);
+					} else if (button.parentNode) {
+						button.parentNode.removeChild(button);
+					}
+					return;
+				}
+
+				button.disabled = false;
+				button.classList.remove('cvacw-load-more-is-loading');
+				button.textContent = 'Load more';
+			})
+			.catch(function () {
+				button.disabled = false;
+				button.classList.remove('cvacw-load-more-is-loading');
+				button.textContent = 'Try again';
+			});
+	}
+
 	function getModal() {
 		if (modal) {
 			return modal;
@@ -82,9 +143,19 @@
 
 	document.addEventListener('click', function (event) {
 		var trigger = event.target.closest('button.cvacw-video-trigger');
+		var loadMoreButton = event.target.closest('button.cvacw-load-more');
+		var app;
 
 		if (trigger) {
 			openModal(trigger);
+		}
+
+		if (loadMoreButton) {
+			app = loadMoreButton.closest('div.cvacw-video-app');
+
+			if (app) {
+				loadMoreVideos(app, loadMoreButton);
+			}
 		}
 	});
 

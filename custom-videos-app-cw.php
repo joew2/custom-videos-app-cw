@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 final class Custom_Videos_App_CW {
 	private const OPTION_NAME = 'custom_videos_app_cw_settings';
 	private const TRANSIENT_PREFIX = 'cvacw_videos_';
-	private const DEFAULT_PER_PAGE = 500;
+	private const DEFAULT_PER_PAGE = 12;
 
 	private static $instance = null;
 
@@ -31,6 +31,8 @@ final class Custom_Videos_App_CW {
 		add_action('admin_menu', array($this, 'add_settings_page'));
 		add_action('admin_init', array($this, 'register_settings'));
 		add_action('wp_enqueue_scripts', array($this, 'register_assets'));
+		add_action('wp_ajax_cvacw_load_more_videos', array($this, 'ajax_load_more_videos'));
+		add_action('wp_ajax_nopriv_cvacw_load_more_videos', array($this, 'ajax_load_more_videos'));
 		add_shortcode('custom_video_app_cw', array($this, 'render_shortcode'));
 		add_shortcode('custom_videos_app_cw', array($this, 'render_shortcode'));
 	}
@@ -82,9 +84,9 @@ final class Custom_Videos_App_CW {
 		);
 
 		add_settings_field(
-			'hide_non_public',
+			'video_visibility',
 			__('Video visibility', 'custom-videos-app-cw'),
-			array($this, 'render_hide_non_public_field'),
+			array($this, 'render_video_visibility_field'),
 			'custom-videos-app-cw',
 			'custom_videos_app_cw_vimeo'
 		);
@@ -94,7 +96,8 @@ final class Custom_Videos_App_CW {
 		$old_settings    = $this->get_settings();
 		$access_token    = isset($input['access_token']) ? sanitize_text_field(wp_unslash($input['access_token'])) : '';
 		$cache_minutes   = isset($input['cache_minutes']) ? absint($input['cache_minutes']) : 60;
-		$hide_non_public = !empty($input['hide_non_public']) ? 1 : 0;
+		$hide_unlisted   = !empty($input['hide_unlisted']) ? 1 : 0;
+		$hide_private    = !empty($input['hide_private']) ? 1 : 0;
 
 		if ($access_token === '********' && !empty($old_settings['access_token'])) {
 			$access_token = $old_settings['access_token'];
@@ -111,9 +114,10 @@ final class Custom_Videos_App_CW {
 		$this->clear_video_cache();
 
 		return array(
-			'access_token'    => $access_token,
-			'cache_minutes'   => $cache_minutes,
-			'hide_non_public' => $hide_non_public,
+			'access_token'  => $access_token,
+			'cache_minutes' => $cache_minutes,
+			'hide_unlisted' => $hide_unlisted,
+			'hide_private'  => $hide_private,
 		);
 	}
 
@@ -143,14 +147,16 @@ final class Custom_Videos_App_CW {
 		echo '<p class="description">' . esc_html__('Video API responses are cached to keep pages fast and avoid unnecessary Vimeo API requests.', 'custom-videos-app-cw') . '</p>';
 	}
 
-	public function render_hide_non_public_field(): void {
+	public function render_video_visibility_field(): void {
 		printf(
-			'<label><input type="checkbox" name="%1$s[hide_non_public]" value="1" %2$s /> %3$s</label>',
+			'<fieldset><label><input type="checkbox" name="%1$s[hide_unlisted]" value="1" %2$s /> %3$s</label><br /><label><input type="checkbox" name="%1$s[hide_private]" value="1" %4$s /> %5$s</label></fieldset>',
 			esc_attr(self::OPTION_NAME),
-			checked($this->should_hide_non_public_videos(), true, false),
-			esc_html__('Hide unlisted and private videos', 'custom-videos-app-cw')
+			checked($this->should_hide_unlisted_videos(), true, false),
+			esc_html__('Hide unlisted videos', 'custom-videos-app-cw'),
+			checked($this->should_hide_private_videos(), true, false),
+			esc_html__('Hide private videos', 'custom-videos-app-cw')
 		);
-		echo '<p class="description">' . esc_html__('When checked, only publicly listed Vimeo videos are shown. When unchecked, the grid can include any videos returned by the authenticated Vimeo account that are embeddable.', 'custom-videos-app-cw') . '</p>';
+		echo '<p class="description">' . esc_html__('Use these settings to control which authenticated Vimeo videos are excluded from the grid. Public videos remain visible.', 'custom-videos-app-cw') . '</p>';
 	}
 
 	public function render_settings_page(): void {
@@ -170,7 +176,7 @@ final class Custom_Videos_App_CW {
 			<hr />
 			<h2><?php echo esc_html__('Shortcode', 'custom-videos-app-cw'); ?></h2>
 			<p><code>[custom_video_app_cw]</code></p>
-			<p><?php echo esc_html__('Optional attributes: per_page, columns, show_description. The default per_page value is 500.', 'custom-videos-app-cw'); ?></p>
+			<p><?php echo esc_html__('Optional attributes: per_page, columns, show_description. The per_page value controls the initial and load-more batch size.', 'custom-videos-app-cw'); ?></p>
 			<p><code>[custom_video_app_cw per_page="12" columns="3" show_description="false"]</code></p>
 		</div>
 		<?php
@@ -207,21 +213,23 @@ final class Custom_Videos_App_CW {
 			'custom_video_app_cw'
 		);
 
-		$per_page         = max(1, min(500, absint($atts['per_page'])));
+		$per_page         = max(1, min(100, absint($atts['per_page'])));
 		$columns          = max(1, min(6, absint($atts['columns'])));
 		$tablet_columns   = min(2, $columns);
 		$show_description = filter_var($atts['show_description'], FILTER_VALIDATE_BOOLEAN);
-		$videos           = $this->get_videos($per_page);
+		$video_batch      = $this->get_video_batch(1, $per_page);
 
 		$this->enqueue_assets();
 
-		if (is_wp_error($videos)) {
+		if (is_wp_error($video_batch)) {
 			if (current_user_can('manage_options')) {
-				return '<div class="cvacw-video-app"><div class="cvacw-notice">' . esc_html($videos->get_error_message()) . '</div></div>';
+				return '<div class="cvacw-video-app"><div class="cvacw-notice">' . esc_html($video_batch->get_error_message()) . '</div></div>';
 			}
 
 			return '<div class="cvacw-video-app"><div class="cvacw-notice">' . esc_html__('Videos are temporarily unavailable.', 'custom-videos-app-cw') . '</div></div>';
 		}
+
+		$videos = $video_batch['videos'];
 
 		if (empty($videos)) {
 			return '<div class="cvacw-video-app"><div class="cvacw-notice">' . esc_html__('No public Vimeo videos are available right now.', 'custom-videos-app-cw') . '</div></div>';
@@ -229,44 +237,101 @@ final class Custom_Videos_App_CW {
 
 		ob_start();
 		?>
-		<div class="cvacw-video-app">
+		<div
+			class="cvacw-video-app"
+			data-ajax-url="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"
+			data-nonce="<?php echo esc_attr(wp_create_nonce('cvacw_load_more_videos')); ?>"
+			data-per-page="<?php echo esc_attr((string) $per_page); ?>"
+			data-next-page="<?php echo esc_attr((string) $video_batch['next_page']); ?>"
+			data-show-description="<?php echo esc_attr($show_description ? '1' : '0'); ?>"
+		>
 			<div class="cvacw-video-grid" style="<?php echo esc_attr('--cvacw-columns:' . $columns . ';--cvacw-tablet-columns:' . $tablet_columns); ?>">
-				<?php foreach ($videos as $video) : ?>
-					<article class="cvacw-video-card">
-						<button
-							type="button"
-							class="cvacw-video-trigger cvacw-video-trigger-thumb"
-							data-vimeo-url="<?php echo esc_url($video['embed_url']); ?>"
-							data-vimeo-title="<?php echo esc_attr($video['title']); ?>"
-							aria-label="<?php echo esc_attr(sprintf(__('Play %s', 'custom-videos-app-cw'), $video['title'])); ?>"
-						>
-							<span class="cvacw-thumb-wrap">
-								<?php if (!empty($video['thumbnail'])) : ?>
-									<img class="cvacw-thumbnail" src="<?php echo esc_url($video['thumbnail']); ?>" alt="" loading="lazy" />
-								<?php else : ?>
-									<span class="cvacw-thumb-placeholder" aria-hidden="true"></span>
-								<?php endif; ?>
-								<span class="cvacw-play" aria-hidden="true"></span>
-							</span>
-						</button>
-						<h4 class="cvacw-title">
-							<button
-								type="button"
-								class="cvacw-video-trigger cvacw-video-trigger-title"
-								data-vimeo-url="<?php echo esc_url($video['embed_url']); ?>"
-								data-vimeo-title="<?php echo esc_attr($video['title']); ?>"
-							>
-								<?php echo esc_html($video['title']); ?>
-							</button>
-						</h4>
-						<?php if ($show_description && !empty($video['description'])) : ?>
-							<p class="cvacw-description"><?php echo esc_html($video['description']); ?></p>
-						<?php endif; ?>
-					</article>
-				<?php endforeach; ?>
+				<?php echo $this->render_video_cards($videos, $show_description); ?>
 			</div>
+			<?php if ($video_batch['has_more']) : ?>
+				<div class="cvacw-load-more-wrap">
+					<button type="button" class="cvacw-load-more">
+						<?php echo esc_html__('Load more', 'custom-videos-app-cw'); ?>
+					</button>
+				</div>
+			<?php endif; ?>
 		</div>
 		<?php
+
+		return (string) ob_get_clean();
+	}
+
+	public function ajax_load_more_videos(): void {
+		if (!check_ajax_referer('cvacw_load_more_videos', 'nonce', false)) {
+			wp_send_json_error(
+				array(
+					'message' => __('The video request could not be verified. Refresh the page and try again.', 'custom-videos-app-cw'),
+				),
+				403
+			);
+		}
+
+		$page             = isset($_POST['page']) ? max(1, absint(wp_unslash($_POST['page']))) : 1;
+		$per_page         = isset($_POST['per_page']) ? max(1, min(100, absint(wp_unslash($_POST['per_page'])))) : self::DEFAULT_PER_PAGE;
+		$show_description = !empty($_POST['show_description']);
+		$video_batch      = $this->get_video_batch($page, $per_page);
+
+		if (is_wp_error($video_batch)) {
+			wp_send_json_error(
+				array(
+					'message' => current_user_can('manage_options') ? $video_batch->get_error_message() : __('Videos are temporarily unavailable.', 'custom-videos-app-cw'),
+				),
+				400
+			);
+		}
+
+		wp_send_json_success(
+			array(
+				'html'      => $this->render_video_cards($video_batch['videos'], $show_description),
+				'nextPage'  => $video_batch['next_page'],
+				'hasMore'   => $video_batch['has_more'],
+			)
+		);
+	}
+
+	private function render_video_cards(array $videos, bool $show_description): string {
+		ob_start();
+
+		foreach ($videos as $video) :
+			?>
+			<article class="cvacw-video-card">
+				<button
+					type="button"
+					class="cvacw-video-trigger cvacw-video-trigger-thumb"
+					data-vimeo-url="<?php echo esc_url($video['embed_url']); ?>"
+					data-vimeo-title="<?php echo esc_attr($video['title']); ?>"
+					aria-label="<?php echo esc_attr(sprintf(__('Play %s', 'custom-videos-app-cw'), $video['title'])); ?>"
+				>
+					<span class="cvacw-thumb-wrap">
+						<?php if (!empty($video['thumbnail'])) : ?>
+							<img class="cvacw-thumbnail" src="<?php echo esc_url($video['thumbnail']); ?>" alt="" loading="lazy" />
+						<?php else : ?>
+							<span class="cvacw-thumb-placeholder" aria-hidden="true"></span>
+						<?php endif; ?>
+						<span class="cvacw-play" aria-hidden="true"></span>
+					</span>
+				</button>
+				<h4 class="cvacw-title">
+					<button
+						type="button"
+						class="cvacw-video-trigger cvacw-video-trigger-title"
+						data-vimeo-url="<?php echo esc_url($video['embed_url']); ?>"
+						data-vimeo-title="<?php echo esc_attr($video['title']); ?>"
+					>
+						<?php echo esc_html($video['title']); ?>
+					</button>
+				</h4>
+				<?php if ($show_description && !empty($video['description'])) : ?>
+					<p class="cvacw-description"><?php echo esc_html($video['description']); ?></p>
+				<?php endif; ?>
+			</article>
+			<?php
+		endforeach;
 
 		return (string) ob_get_clean();
 	}
@@ -277,7 +342,7 @@ final class Custom_Videos_App_CW {
 		return is_array($settings) ? $settings : array();
 	}
 
-	private function get_videos(int $limit) {
+	private function get_video_batch(int $start_page, int $per_page) {
 		$settings     = $this->get_settings();
 		$access_token = isset($settings['access_token']) ? trim((string) $settings['access_token']) : '';
 
@@ -288,22 +353,24 @@ final class Custom_Videos_App_CW {
 			);
 		}
 
-		$hide_non_public = $this->should_hide_non_public_videos();
-		$cache_key        = self::TRANSIENT_PREFIX . md5((string) $limit . '_' . (int) $hide_non_public);
-		$cached           = get_transient($cache_key);
+		$hide_unlisted = $this->should_hide_unlisted_videos();
+		$hide_private  = $this->should_hide_private_videos();
+		$cache_key     = self::TRANSIENT_PREFIX . md5((string) $start_page . '_' . (string) $per_page . '_' . (int) $hide_unlisted . '_' . (int) $hide_private);
+		$cached        = get_transient($cache_key);
 
 		if (false !== $cached) {
 			return $cached;
 		}
 
-		$videos = array();
-		$page   = 1;
+		$videos        = array();
+		$page          = $start_page;
+		$has_next_page = false;
 
 		do {
 			$url = add_query_arg(
 				array(
 					'page'      => $page,
-					'per_page'  => min(100, $limit),
+					'per_page'  => $per_page,
 					'sort'      => 'date',
 					'direction' => 'desc',
 					'fields'    => 'uri,name,description,pictures.sizes,player_embed_url,privacy.view,paging.next',
@@ -341,7 +408,11 @@ final class Custom_Videos_App_CW {
 			}
 
 			foreach ($body['data'] as $video) {
-				if ($hide_non_public && !$this->is_public_video($video)) {
+				if ($hide_unlisted && $this->is_unlisted_video($video)) {
+					continue;
+				}
+
+				if ($hide_private && $this->is_private_video($video)) {
 					continue;
 				}
 
@@ -357,35 +428,59 @@ final class Custom_Videos_App_CW {
 					'thumbnail'   => $this->get_best_thumbnail($video),
 					'embed_url'   => $embed_url,
 				);
-
-				if (count($videos) >= $limit) {
-					break 2;
-				}
 			}
 
 			$has_next_page = !empty($body['paging']['next']);
 			$page++;
-		} while ($has_next_page && $page <= 25);
+		} while ($has_next_page && empty($videos) && $page <= ($start_page + 25));
 
-		set_transient($cache_key, $videos, $this->get_cache_seconds());
+		$batch = array(
+			'videos'    => $videos,
+			'next_page' => $has_next_page ? $page : 0,
+			'has_more'  => $has_next_page,
+		);
 
-		return $videos;
+		set_transient($cache_key, $batch, $this->get_cache_seconds());
+
+		return $batch;
 	}
 
-	private function is_public_video(array $video): bool {
+	private function is_unlisted_video(array $video): bool {
 		$privacy = $video['privacy']['view'] ?? '';
 
-		return 'anybody' === $privacy;
+		return 'unlisted' === $privacy;
 	}
 
-	private function should_hide_non_public_videos(): bool {
+	private function is_private_video(array $video): bool {
+		$privacy = $video['privacy']['view'] ?? '';
+
+		return 'nobody' === $privacy;
+	}
+
+	private function should_hide_unlisted_videos(): bool {
+		return $this->get_visibility_setting('hide_unlisted');
+	}
+
+	private function should_hide_private_videos(): bool {
+		return $this->get_visibility_setting('hide_private');
+	}
+
+	private function get_visibility_setting(string $key): bool {
 		$settings = $this->get_settings();
 
-		if (!array_key_exists('hide_non_public', $settings)) {
+		if (array_key_exists($key, $settings)) {
+			return !empty($settings[$key]);
+		}
+
+		if (array_key_exists('hide_non_public', $settings)) {
+			return !empty($settings['hide_non_public']);
+		}
+
+		if ('hide_private' === $key || 'hide_unlisted' === $key) {
 			return true;
 		}
 
-		return !empty($settings['hide_non_public']);
+		return false;
 	}
 
 	private function get_best_thumbnail(array $video): string {

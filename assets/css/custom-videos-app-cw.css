@@ -142,6 +142,54 @@ div.cvacw-video-app div.cvacw-notice {
 	padding: 14px 16px;
 }
 
+div.cvacw-video-app div.cvacw-load-more-wrap {
+	display: flex;
+	justify-content: center;
+	margin: 32px 0 0;
+}
+
+div.cvacw-video-app button.cvacw-load-more {
+	appearance: none;
+	background: #0f172a;
+	border: 1px solid #0f172a;
+	border-radius: 4px;
+	box-shadow: none;
+	color: #ffffff;
+	cursor: pointer;
+	display: inline-flex;
+	font-size: 1rem;
+	font-style: normal;
+	font-weight: 700;
+	justify-content: center;
+	letter-spacing: 0;
+	line-height: 1.2;
+	margin: 0;
+	min-width: 144px;
+	padding: 13px 22px;
+	text-align: center;
+	text-decoration: none;
+	text-transform: none;
+	transition: background 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+div.cvacw-video-app button.cvacw-load-more:hover,
+div.cvacw-video-app button.cvacw-load-more:focus-visible {
+	background: #2563eb;
+	border-color: #2563eb;
+	color: #ffffff;
+}
+
+div.cvacw-video-app button.cvacw-load-more:focus-visible {
+	outline: 3px solid #93c5fd;
+	outline-offset: 3px;
+}
+
+div.cvacw-video-app button.cvacw-load-more:disabled,
+div.cvacw-video-app button.cvacw-load-more.cvacw-load-more-is-loading {
+	cursor: wait;
+	opacity: 0.72;
+}
+
 div.cvacw-modal {
 	align-items: center;
 	background: rgba(15, 23, 42, 0.84);
